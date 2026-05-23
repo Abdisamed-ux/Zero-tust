@@ -1,0 +1,26 @@
+services:
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    environment:
+      - AUTH_SECRET=supersecretkey
+      - TOKEN_TTL_SECONDS=120
+  policy-engine:
+    build: ./policy-engine
+    container_name: policy-engine
+  resource-service:
+    build: ./resource-service
+    container_name: resource-service
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - POLICY_ENGINE_URL=http://policy-engine:5002
+      - RESOURCE_SERVICE_URL=http://resource-service:5003
+    depends_on:
+      - auth-service
+      - policy-engine
+      - resource-service

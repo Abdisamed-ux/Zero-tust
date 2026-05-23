@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zero Trust Network | SENG 473 | Abdisamed · Suad · Manar</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-base:    #0d1117;
+      --bg-surface: #161b22;
+      --bg-raised:  #21262d;
+      --border:     #30363d;
+      --text:       #e6edf3;
+      --muted:      #8b949e;
+      --green:      #3fb950;
+      --blue:       #58a6ff;
+      --yellow:     #d29922;
+      --red:        #f85149;
+    }
+
+    body             { background: var(--bg-base); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a, a:visited     { color: var(--blue); }
+    .navbar          { background: var(--bg-surface) !important; border-bottom: 1px solid var(--border); }
+    .card            { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; }
+    .card-header     { background: var(--bg-raised); border-bottom: 1px solid var(--border); font-size: .85rem; font-weight: 600; }
+    .form-control, .form-select {
+      background: var(--bg-base); border-color: var(--border); color: var(--text);
+    }
+    .form-control:focus, .form-select:focus {
+      background: var(--bg-base); border-color: var(--blue); color: var(--text); box-shadow: 0 0 0 3px rgba(88,166,255,.15);
+    }
+    .form-control::placeholder { color: var(--muted); }
+    .btn-zt          { background: #238636; border-color: #238636; color: #fff; }
+    .btn-zt:hover    { background: #2ea043; border-color: #2ea043; color: #fff; }
+    .badge-admin     { background: #da3633 !important; }
+    .badge-employee  { background: #1f6feb !important; }
+    .badge-viewer    { background: #6e7681 !important; }
+
+    /* Resource cards */
+    .res-card        { cursor: pointer; transition: border-color .15s, transform .15s; }
+    .res-card:hover  { border-color: var(--blue) !important; transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+    .res-card .icon  { font-size: 2rem; line-height: 1; }
+
+    /* Token bar */
+    .token-bar       { height: 5px; background: var(--green); transition: width 1s linear, background .5s; border-radius: 99px; }
+    .token-bar.warn  { background: var(--yellow); }
+    .token-bar.dead  { background: var(--red); }
+
+    /* Audit log */
+    .log-card               { border-left: 3px solid var(--border); background: var(--bg-base); border-radius: 6px; font-size: .78rem; }
+    .log-card.allowed       { border-left-color: var(--green); }
+    .log-card.denied        { border-left-color: var(--red); }
+
+    /* Response panel */
+    pre  { background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: .78rem; max-height: 220px; overflow-y: auto; color: #79c0ff; white-space: pre-wrap; word-break: break-all; }
+
+    /* ZT steps */
+    .zt-step-item    { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .zt-step-item:last-child { border-bottom: none; }
+    .zt-step-num     { width: 22px; height: 22px; border-radius: 50%; background: var(--bg-raised); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: .7rem; flex-shrink: 0; color: var(--blue); font-weight: 700; }
+    .zt-step-num.done { background: #238636; border-color: #2ea043; color: #fff; }
+    .zt-step-num.fail { background: #da3633; border-color: #f85149; color: #fff; }
+
+    /* Risk score */
+    .risk-low  { color: var(--green); }
+    .risk-med  { color: var(--yellow); }
+    .risk-high { color: var(--red); }
+
+    /* Login card */
+    .login-wrap { min-height: 90vh; display: flex; align-items: center; justify-content: center; }
+    .login-card { width: 100%; max-width: 420px; }
+    .cred-btn   { font-size: .78rem; }
+
+    /* Scrollable log column */
+    .log-scroll { overflow-y: auto; max-height: calc(100vh - 90px); }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════ NAVBAR ═══════════════════ -->
+<nav class="navbar navbar-dark px-3">
+  <span class="navbar-brand fw-bold">
+    <i class="bi bi-shield-lock-fill text-success me-2"></i>Zero Trust Network
+    <span class="badge bg-secondary ms-2" style="font-size:.65rem">SENG 473</span>
+  </span>
+  <span class="text-muted small d-none d-md-inline">
+    Abdisamed Ahmed &nbsp;·&nbsp; Suad Abdırahman &nbsp;·&nbsp; Manar Algburi
+  </span>
+  <div id="nav-user" class="d-none align-items-center gap-3">
+    <span class="small text-muted">Logged in as</span>
+    <span id="nav-username" class="fw-semibold"></span>
+    <button class="btn btn-sm btn-outline-danger" onclick="logout()">
+      <i class="bi bi-box-arrow-right me-1"></i>Logout
+    </button>
+  </div>
+</nav>
+
+<!-- ═══════════════════ LOGIN ═══════════════════ -->
+<div id="login-screen" class="login-wrap px-3">
+  <div class="login-card card shadow-lg">
+    <div class="card-header text-center py-4 border-0" style="background:var(--bg-surface)">
+      <div class="fs-1 mb-2">🛡️</div>
+      <h5 class="mb-0">Identity Verification Required</h5>
+      <p class="text-muted small mt-1 mb-0">Zero Trust — <em>Never Trust, Always Verify</em></p>
+    </div>
+    <div class="card-body p-4">
+      <div id="login-err" class="alert alert-danger d-none py-2 small"></div>
+      <div class="mb-3">
+        <label class="form-label text-muted small">Username</label>
+        <input id="inp-user" type="text" class="form-control" placeholder="admin, alice, bob, charlie">
+      </div>
+      <div class="mb-3">
+        <label class="form-label text-muted small">Password</label>
+        <input id="inp-pass" type="password" class="form-control" placeholder="Password">
+      </div>
+      <button class="btn btn-zt w-100 mb-3" onclick="login()">
+        <i class="bi bi-lock-fill me-2"></i>Authenticate &amp; Get Token
+      </button>
+      <p class="text-muted small mb-2">Quick-fill demo credentials:</p>
+      <div class="row g-2">
+        <div class="col-6"><button class="btn btn-sm btn-outline-secondary w-100 cred-btn" onclick="fill('admin','Admin@123')">👑 admin (admin)</button></div>
+        <div class="col-6"><button class="btn btn-sm btn-outline-secondary w-100 cred-btn" onclick="fill('alice','Alice@123')">👩 alice (employee)</button></div>
+        <div class="col-6"><button class="btn btn-sm btn-outline-secondary w-100 cred-btn" onclick="fill('bob','Bob@123')">👨 bob (employee)</button></div>
+        <div class="col-6"><button class="btn btn-sm btn-outline-secondary w-100 cred-btn" onclick="fill('charlie','Charlie@123')">👤 charlie (viewer)</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ DASHBOARD ═══════════════════ -->
+<div id="dashboard" class="container-fluid py-3 d-none">
+  <div class="row g-3">
+
+    <!-- ── LEFT COLUMN ── -->
+    <div class="col-lg-3">
+
+      <!-- Identity Card -->
+      <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-person-badge me-2 text-info"></i>Identity Context</div>
+        <div class="card-body">
+          <div class="d-flex align-items-center mb-3 gap-3">
+            <div id="user-avatar" class="fs-2"></div>
+            <div>
+              <div class="fw-bold" id="user-name">—</div>
+              <span id="role-badge" class="badge mt-1">—</span>
+            </div>
+          </div>
+          <div class="mb-2">
+            <div class="text-muted small">Device ID (fingerprint)</div>
+            <div id="device-id" class="font-monospace text-warning" style="font-size:.72rem;word-break:break-all">—</div>
+          </div>
+          <div class="mb-1">
+            <div class="text-muted small">Token expires in</div>
+            <div id="countdown" class="fw-bold text-success">—</div>
+          </div>
+          <div class="token-bar mt-1" id="tbar" style="width:100%"></div>
+        </div>
+      </div>
+
+      <!-- ZT Flow Steps -->
+      <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-diagram-3 me-2 text-warning"></i>Zero Trust Flow</div>
+        <div class="card-body py-2 px-3">
+          <div class="zt-step-item"><div class="zt-step-num" id="s1">1</div><div class="small"><strong>Authenticate</strong><br><span class="text-muted">Credentials → Auth Service → JWT</span></div></div>
+          <div class="zt-step-item"><div class="zt-step-num" id="s2">2</div><div class="small"><strong>Verify Token</strong><br><span class="text-muted">JWT → Auth Service → User context</span></div></div>
+          <div class="zt-step-item"><div class="zt-step-num" id="s3">3</div><div class="small"><strong>Evaluate Policy</strong><br><span class="text-muted">Role + Device + Time → Decision</span></div></div>
+          <div class="zt-step-item"><div class="zt-step-num" id="s4">4</div><div class="small"><strong>Access Resource</strong><br><span class="text-muted">Gateway fetches &amp; returns data</span></div></div>
+          <div class="zt-step-item"><div class="zt-step-num" id="s5">5</div><div class="small"><strong>Audit Log</strong><br><span class="text-muted">Every decision recorded</span></div></div>
+        </div>
+      </div>
+
+      <!-- Policies -->
+      <div class="card">
+        <div class="card-header"><i class="bi bi-file-ruled me-2 text-primary"></i>Active Policies</div>
+        <div id="policies-list" class="list-group list-group-flush" style="border-radius:0 0 8px 8px"></div>
+      </div>
+    </div>
+
+    <!-- ── MIDDLE COLUMN ── -->
+    <div class="col-lg-6">
+
+      <!-- Resource Buttons -->
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-server me-2 text-success"></i>Protected Resources</span>
+          <span class="badge bg-secondary" style="font-size:.68rem">Every request is re-verified</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-2">
+            <div class="col-6 col-md-3">
+              <div class="card res-card text-center p-3 h-100" onclick="accessResource('public')">
+                <div class="icon">🌐</div>
+                <div class="fw-semibold mt-2">Public Data</div>
+                <div class="text-muted" style="font-size:.72rem">All roles</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="card res-card text-center p-3 h-100" onclick="accessResource('employee')">
+                <div class="icon">👥</div>
+                <div class="fw-semibold mt-2">Employee Portal</div>
+                <div class="text-muted" style="font-size:.72rem">employee · admin</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="card res-card text-center p-3 h-100" onclick="accessResource('admin')">
+                <div class="icon">⚙️</div>
+                <div class="fw-semibold mt-2">Admin Panel</div>
+                <div class="text-muted" style="font-size:.72rem">admin · trusted device</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="card res-card text-center p-3 h-100" onclick="accessResource('finance')">
+                <div class="icon">💰</div>
+                <div class="fw-semibold mt-2">Financial Data</div>
+                <div class="text-muted" style="font-size:.72rem">admin · time-gated</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Panel -->
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-terminal me-2"></i>Gateway Response</span>
+          <span id="resp-badge" class="badge bg-secondary">—</span>
+        </div>
+        <div class="card-body p-3" id="resp-panel">
+          <p class="text-muted text-center py-4 mb-0 small">
+            Click a resource card above to send a request through the Zero Trust gateway.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT COLUMN: AUDIT LOG ── -->
+    <div class="col-lg-3">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-journal-text me-2 text-warning"></i>Audit Log</span>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadLogs()" title="Refresh">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+        </div>
+        <div class="card-body p-2 log-scroll" id="log-container">
+          <p class="text-muted text-center small py-3">No entries yet.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /row -->
+</div><!-- /dashboard -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let token = null, deviceId = null, expiry = null, duration = null, timer = null;
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+function fill(u, p) {
+  document.getElementById('inp-user').value = u;
+  document.getElementById('inp-pass').value = p;
+}
+
+async function login() {
+  const username = document.getElementById('inp-user').value.trim();
+  const password = document.getElementById('inp-pass').value;
+  if (!username || !password) { showErr('Please enter username and password.'); return; }
+
+  deviceId = getDeviceId();
+  try {
+    const r = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, device_id: deviceId })
+    });
+    const d = await r.json();
+    if (!r.ok) { showErr(d.error || 'Login failed'); return; }
+
+    token    = d.token;
+    expiry   = Date.now() + d.expires_in * 1000;
+    duration = d.expires_in;
+
+    const user = { username: d.username, role: d.role, device_id: d.device_id };
+    showDashboard(user);
+    loadPolicies();
+    loadLogs();
+    highlightStep(1, true);
+  } catch (e) { showErr('Connection error: ' + e.message); }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('login-err');
+  el.textContent = msg; el.classList.remove('d-none');
+}
+
+// ── Device fingerprint ────────────────────────────────────────────────────────
+function getDeviceId() {
+  const key = 'zt_device_id';
+  let id = sessionStorage.getItem(key);
+  if (!id) {
+    const fp = navigator.userAgent + screen.width + screen.height + navigator.language + navigator.hardwareConcurrency;
+    id = 'DEV-' + btoa(fp).replace(/[^A-Za-z0-9]/g, '').substring(0, 14).toUpperCase();
+    sessionStorage.setItem(key, id);
+  }
+  return id;
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function showDashboard(user) {
+  document.getElementById('login-screen').classList.add('d-none');
+  document.getElementById('dashboard').classList.remove('d-none');
+  document.getElementById('nav-user').classList.remove('d-none');
+  document.getElementById('nav-username').textContent = user.username;
+
+  const avatars = { admin: '👑', employee: '👤', viewer: '👁️' };
+  document.getElementById('user-avatar').textContent = avatars[user.role] || '🙂';
+  document.getElementById('user-name').textContent = user.username;
+
+  const roleClasses = { admin: 'badge-admin', employee: 'badge-employee', viewer: 'badge-viewer' };
+  const rb = document.getElementById('role-badge');
+  rb.textContent = user.role.toUpperCase();
+  rb.className = `badge ${roleClasses[user.role] || 'bg-secondary'}`;
+
+  document.getElementById('device-id').textContent = user.device_id || deviceId;
+
+  if (timer) clearInterval(timer);
+  timer = setInterval(tick, 1000);
+  tick();
+}
+
+function tick() {
+  const rem = Math.max(0, Math.floor((expiry - Date.now()) / 1000));
+  const m = Math.floor(rem / 60), s = rem % 60;
+  const el = document.getElementById('countdown');
+  const bar = document.getElementById('tbar');
+  el.textContent = rem > 0 ? `${m}m ${String(s).padStart(2,'0')}s` : '⚠️ EXPIRED — re-login required';
+  const pct = Math.max(0, (rem / duration) * 100);
+  bar.style.width = pct + '%';
+  bar.className = 'token-bar' + (rem <= 0 ? ' dead' : pct < 30 ? ' warn' : '');
+  el.className   = 'fw-bold ' + (rem <= 0 ? 'text-danger' : pct < 30 ? 'text-warning' : 'text-success');
+}
+
+// ── Resource access ───────────────────────────────────────────────────────────
+async function accessResource(res) {
+  const panel = document.getElementById('resp-panel');
+  const badge = document.getElementById('resp-badge');
+  badge.className = 'badge bg-secondary'; badge.textContent = '…';
+  panel.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-info"></div><span class="ms-2 text-muted small">Verifying through Zero Trust gateway…</span></div>';
+
+  // animate steps
+  [2,3,4,5].forEach(n => highlightStep(n, null));
+
+  try {
+    await sleep(200); highlightStep(2, true);
+    await sleep(150); highlightStep(3, true);
+
+    const r = await fetch(`/api/resources/${res}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'X-Device-ID': deviceId }
+    });
+    const d = await r.json();
+
+    if (r.ok) {
+      highlightStep(4, true); highlightStep(5, true);
+      badge.className = 'badge bg-success'; badge.textContent = '✓ ALLOWED';
+
+      const zt  = d.zt_metadata || {};
+      const rc  = zt.risk_score < 40 ? 'risk-low' : zt.risk_score < 70 ? 'risk-med' : 'risk-high';
+      const bar = `<div style="height:4px;width:${100 - zt.risk_score}%;background:${zt.risk_score<40?'#3fb950':zt.risk_score<70?'#d29922':'#f85149'};border-radius:99px"></div>`;
+
+      panel.innerHTML = `
+        <div class="alert alert-success py-2 small mb-2">✅ <strong>Access Granted</strong> — ${escH(d.title || res)}</div>
+        <div class="row g-2 small mb-2">
+          <div class="col-6"><div class="text-muted">Policy enforced</div><div>${escH(zt.policy||'—')}</div></div>
+          <div class="col-6"><div class="text-muted">Risk score</div><div class="${rc} fw-bold">${zt.risk_score}/100</div>${bar}</div>
+          <div class="col-6"><div class="text-muted">Classification</div><span class="badge bg-secondary">${escH(d.classification||'—')}</span></div>
+          <div class="col-6"><div class="text-muted">Device trusted</div><div>${zt.device_trusted?'<span class="text-success">✓ Yes</span>':'<span class="text-danger">✗ No</span>'}</div></div>
+        </div>
+        <div class="text-muted small mb-1">Resource data:</div>
+        <pre>${escH(JSON.stringify(d.data, null, 2))}</pre>`;
+    } else {
+      highlightStep(3, false); highlightStep(4, null); highlightStep(5, null);
+      badge.className = 'badge bg-danger'; badge.textContent = '✗ DENIED';
+
+      panel.innerHTML = `
+        <div class="alert alert-danger py-2 small mb-2">🚫 <strong>Access Denied</strong></div>
+        <div class="small mb-1"><span class="text-muted">Reason: </span><span class="text-danger">${escH(d.reason||d.error||'Denied')}</span></div>
+        <div class="small mb-1"><span class="text-muted">Policy: </span>${escH(d.policy||d.zt_step||'—')}</div>
+        <div class="small"><span class="text-muted">Risk score: </span><span class="risk-high fw-bold">${d.risk_score ?? '—'}/100</span></div>`;
+    }
+  } catch (e) {
+    badge.className = 'badge bg-warning text-dark'; badge.textContent = 'ERROR';
+    panel.innerHTML = `<div class="alert alert-warning small">Connection error: ${e.message}</div>`;
+  }
+
+  setTimeout(loadLogs, 400);
+}
+
+// ── Audit log ─────────────────────────────────────────────────────────────────
+async function loadLogs() {
+  try {
+    const r = await fetch('/api/logs');
+    const d = await r.json();
+    renderLogs(d.logs || []);
+  } catch (_) {}
+}
+
+function renderLogs(logs) {
+  const el = document.getElementById('log-container');
+  if (!logs.length) { el.innerHTML = '<p class="text-muted text-center small py-3">No entries yet.</p>'; return; }
+  el.innerHTML = logs.map(l => `
+    <div class="log-card ${l.decision.toLowerCase()} p-2 mb-1">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">${escH(l.username)}</span>
+        <span class="badge ${l.decision==='ALLOWED'?'bg-success':'bg-danger'}" style="font-size:.65rem">${l.decision}</span>
+      </div>
+      <div class="text-muted">/${escH(l.resource)}</div>
+      <div style="font-size:.68rem;color:var(--muted)">${l.timestamp} UTC</div>
+      <div style="font-size:.7rem" class="${l.decision==='ALLOWED'?'text-success':'text-danger'}">${escH(l.reason)}</div>
+    </div>`).join('');
+}
+
+// ── Policies ──────────────────────────────────────────────────────────────────
+async function loadPolicies() {
+  try {
+    const r = await fetch('/api/policies');
+    const d = await r.json();
+    renderPolicies(d.policies || []);
+  } catch (_) {}
+}
+
+function renderPolicies(policies) {
+  document.getElementById('policies-list').innerHTML = policies.map(p => `
+    <div class="list-group-item py-2 px-3" style="background:var(--bg-base);border-color:var(--border);color:var(--text)">
+      <div class="small fw-semibold">${escH(p.name)}</div>
+      <div class="d-flex flex-wrap gap-1 mt-1">
+        ${p.allowed_roles.map(r=>`<span class="badge bg-secondary">${r}</span>`).join('')}
+        ${p.requires_trusted_device?'<span class="badge" style="background:#5a3e00;color:#e3b341">trusted device</span>':''}
+        ${p.time_restriction?'<span class="badge" style="background:#0d2d57;color:#58a6ff">time-gated</span>':''}
+      </div>
+    </div>`).join('');
+}
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+async function logout() {
+  clearInterval(timer);
+  const uname = document.getElementById('nav-username').textContent;
+  try {
+    await fetch('/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ token, username: uname })
+    });
+  } catch (_) {}
+  token = null;
+  document.getElementById('dashboard').classList.add('d-none');
+  document.getElementById('nav-user').classList.add('d-none');
+  document.getElementById('login-screen').classList.remove('d-none');
+  document.getElementById('login-err').classList.add('d-none');
+  document.getElementById('inp-pass').value = '';
+  [1,2,3,4,5].forEach(n => highlightStep(n, null));
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escH(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function highlightStep(n, ok) {
+  const el = document.getElementById('s' + n);
+  if (!el) return;
+  if (ok === true)  { el.className = 'zt-step-num done'; el.textContent = '✓'; }
+  else if (ok === false) { el.className = 'zt-step-num fail'; el.textContent = '✗'; }
+  else              { el.className = 'zt-step-num'; el.textContent = n; }
+}
+
+// Enter key on login
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !document.getElementById('login-screen').classList.contains('d-none')) login();
+});
+</script>
+</body>
+</html>
